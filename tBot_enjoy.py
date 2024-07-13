@@ -2,7 +2,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.filters import Command
 from aiogram.types import Message
 
-BOT_TOKEN = "7359683723:AAHVfnQvwvS1-vWEPQZ4e52_pZoaHTcQ7os"
+BOT_TOKEN = "pass"
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
