@@ -1,12 +1,13 @@
-import json
 import random
 import requests
+import asyncio
+import pickle
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command, CommandStart
 from aiogram.types import Message
 
-BOT_TOKEN = "BOT_TOKEN"
+BOT_TOKEN = "PASS"
 API_CATS_URL = 'https://api.thecatapi.com/v1/images/search'
 
 bot = Bot(token=BOT_TOKEN)
@@ -14,14 +15,16 @@ dp = Dispatcher()
 
 ATTEMPTS = 5
 
-user = {'in_game': False,
-        'secret_number': None,
-        'attempts': None,
-        'total_games': 0,
-        'wins': 0}
+with open('data_id.pkl', 'rb') as file:
+    users = pickle.load(file)
 
 def get_random_number() -> int:
     return random.randint(1, 100)
+
+def saved_res():
+    with open('data_id.pkl', 'wb') as file:
+        pickle.dump(users, file)
+
 
 @dp.message(CommandStart())
 async def process_start_command(message: Message):
@@ -30,6 +33,16 @@ async def process_start_command(message: Message):
         'Чтобы получить правила игры и список доступных '
         'команд - отправьте команду /help'
     )
+    if message.from_user.id not in users:
+        users[message.from_user.id] = {
+            'in_game': False,
+            'secret_number': None,
+            'attempts': None,
+            'total_games': 0,
+            'wins': 0
+            }
+    saved_res()
+
 
 @dp.message(Command(commands=['help']))
 async def process_help_command(message: Message):
@@ -45,20 +58,21 @@ async def process_help_command(message: Message):
 @dp.message(Command(commands='stat'))
 async def process_help_command(message: Message):
     await message.answer(
-        f'Всего игр сыграно: {user["total_games"]}\n'
-        f'Игр выиграно: {user["wins"]}'
+        f'Всего игр сыграно: {users[message.from_user.id]["total_games"]}\n'
+        f'Игр выиграно: {users[message.from_user.id]["wins"]}'
     )
 
 @dp.message(Command(commands='reset'))
 async def process_reset_command(message: Message):
-    user['total_games'] = 0
-    user['wins'] = 0
+    users[message.from_user.id]['total_games'] = 0
+    users[message.from_user.id]['wins'] = 0
     await message.answer('Статистика обнулена.') 
+    saved_res()
 
 @dp.message(Command(commands='cancel'))
 async def process_cancel_command(message: Message):
-    if user['in_game']:
-        user['in_game'] = False
+    if users[message.from_user.id]['in_game']:
+        users[message.from_user.id]['in_game'] = False
         await message.answer(
             'Вы вышли из игры. Если захотите сыграть '
             'снова - напишите об этом'
@@ -68,18 +82,20 @@ async def process_cancel_command(message: Message):
             'А мы и так с вами не играли :3'
             'Может сыграем хоть разок?'
         )
+    saved_res()
 
 @dp.message(F.text.lower().in_(['да', 'давай', 'сыграем', 'игра',
                                 'играть', 'хочу играть']))
 async def process_positive_answer(message: Message):
-    if not user['in_game']:
-        user['in_game'] = True
-        user['secret_number'] = get_random_number()
-        user['attempts'] = ATTEMPTS
+    if not users[message.from_user.id]['in_game']:
+        users[message.from_user.id]['in_game'] = True
+        users[message.from_user.id]['secret_number'] = get_random_number()
+        users[message.from_user.id]['attempts'] = ATTEMPTS
         await message.answer(
             'Ура!\n\nЯ загадал число от 1 до 100, '
             'попробуй угадать!'
         )
+        saved_res()
     else:
         await message.answer(
             'Пока мы играем в игру я могу '
@@ -89,7 +105,7 @@ async def process_positive_answer(message: Message):
 
 @dp.message(F.text.lower().in_(['нет', 'не', 'не хочу', 'не буду']))
 async def process_negative_answer(message: Message):
-    if not user['in_game']:
+    if not users[message.from_user.id]['in_game']:
         await message.answer(
             'Жаль :(\n\nЕсли захотите поиграть - просто '
             'напишите об этом'
@@ -102,11 +118,11 @@ async def process_negative_answer(message: Message):
 
 @dp.message(lambda x: x.text and x.text.isdigit() and 1 <= int(x.text) <= 100)
 async def process_numbers_answer(message: Message):
-    if user['in_game']:
-        if user['secret_number'] == int(message.text):
-            user['in_game'] = False
-            user['total_games'] += 1
-            user['wins'] += 1
+    if users[message.from_user.id]['in_game']:
+        if users[message.from_user.id]['secret_number'] == int(message.text):
+            users[message.from_user.id]['in_game'] = False
+            users[message.from_user.id]['total_games'] += 1
+            users[message.from_user.id]['wins'] += 1
             cat_response = requests.get(API_CATS_URL)
             if cat_response.status_code == 200:
                 cat_link = cat_response.json()[0]['url']
@@ -118,28 +134,29 @@ async def process_numbers_answer(message: Message):
                 )
             await message.answer_photo(photo=cat_link)
             await message.answer('Хотите сыграть ещё?')
-        elif user['secret_number'] < int(message.text):
-            user['attempts'] -= 1
+        elif users[message.from_user.id]['secret_number'] < int(message.text):
+            users[message.from_user.id]['attempts'] -= 1
             await message.answer('Мое число меньше')
-        elif user['secret_number'] > int(message.text):
-            user['attempts'] -= 1
+        elif users[message.from_user.id]['secret_number'] > int(message.text):
+            users[message.from_user.id]['attempts'] -= 1
             await message.answer('Мое число больше')
 
-        if user['attempts'] == 0:
-            user['in_game'] = False
-            user['total_games'] += 1
+        if users[message.from_user.id]['attempts'] == 0:
+            users[message.from_user.id]['in_game'] = False
+            users[message.from_user.id]['total_games'] += 1
             await message.answer(
                 f'К сожалению, у вас больше не осталось '
                 f'попыток. Вы проиграли \n\nМое число '
-                f'было {user["secret_number"]}\n\nДавайте '
+                f'было {users[message.from_user.id]["secret_number"]}\n\nДавайте '
                 f'сыграем еще?'
             )
+        saved_res()
     else:
         await message.answer('Мы еще не играем. Хотите сыграть?')
 
 @dp.message()
 async def process_other_answers(message: Message):
-    if user['in_game']:
+    if users[message.from_user.id]['in_game']:
         await message.answer(
             'Мы же сейчас с вами играем. '
             'Присылайте, пожалуйста, числа от 1 до 100'
